@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SocialFrame - Social Media Mockup Tool</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FileSaver.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #18181b; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+
+        /* Transparency Grid */
+        .checkerboard {
+            background-color: #18181b;
+            background-image: 
+                linear-gradient(45deg, #27272a 25%, transparent 25%), 
+                linear-gradient(-45deg, #27272a 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #27272a 75%), 
+                linear-gradient(-45deg, transparent 75%, #27272a 75%);
+            background-size: 20px 20px;
+        }
+        
+        /* Hide file inputs */
+        input[type="file"] { display: none; }
+    </style>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { 900: '#09090b', 800: '#18181b', 700: '#27272a' },
+                        social: { blue: '#0077b5', like: '#ef4444' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-dark-900 text-white h-screen overflow-hidden">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- Icons ---
+        const Icons = {
+            Upload: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>,
+            Download: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
+            User: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+            Image: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>,
+            Smartphone: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" x2="12" y1="18" y2="18"/></svg>,
+            Layout: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>,
+            Heart: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="white" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>,
+            Share: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>,
+            More: () => <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        };
+
+        function App() {
+            // --- State ---
+            const [mode, setMode] = useState('feed'); // 'feed' | 'story'
+            const [loading, setLoading] = useState(false);
+            
+            // Content State
+            const [content, setContent] = useState({
+                avatar: null,
+                mainImage: null,
+                name: 'Bedrijfsnaam B.V.',
+                text: 'Ontdek onze nieuwste collectie! We hebben hard gewerkt aan unieke designs die perfect aansluiten bij jouw stijl.',
+                headline: 'Nieuwe Collectie Nu Beschikbaar',
+                buttonText: 'Lees meer'
+            });
+
+            // Frame/Background State
+            const [style, setStyle] = useState({
+                bgColor1: '#e4e4e7', 
+                bgColor2: '#d4d4d8', 
+                bgType: 'transparent', // Default to transparent
+                padding: 40,
+                darkMode: false, 
+                deviceShadow: true,
+                deviceBorder: false
+            });
+
+            // --- Handlers ---
+            const handleImageUpload = (key, e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        setContent(prev => ({ 
+                            ...prev, 
+                            [key]: { src: ev.target.result, width: img.naturalWidth, height: img.naturalHeight } 
+                        }));
+                    };
+                    img.src = ev.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const updateContent = (key, val) => setContent(prev => ({ ...prev, [key]: val }));
+            const updateStyle = (key, val) => setStyle(prev => ({ ...prev, [key]: val }));
+
+            // --- Layout Calculations for Preview ---
+            // We calculate max text height based on aspect ratio to clamp CSS
+            const layoutMetrics = useMemo(() => {
+                if (mode !== 'feed') return {};
+                
+                // Base dimensions of the preview box (320px width reference)
+                const phoneW = 320;
+                const phoneH = 650;
+                
+                // Heights of fixed elements in preview pixels
+                const headerH = 80; // Avatar + Name area
+                const footerH = 70; // CTA area
+                const safetyPad = 20;
+
+                // Image Height
+                let imgH = phoneW; // Default square
+                if (content.mainImage) {
+                    const aspect = content.mainImage.height / content.mainImage.width;
+                    imgH = phoneW * aspect;
+                }
+
+                // Calculate space remaining for text
+                const availableSpace = phoneH - headerH - footerH - imgH - safetyPad;
+
+                return {
+                    imgHeight: imgH,
+                    maxTextHeight: Math.max(20, availableSpace) // Ensure at least a little text shows
+                };
+            }, [mode, content.mainImage]);
+
+            // --- Canvas Generation ---
+            const generateCanvas = async () => {
+                setLoading(true);
+                await new Promise(r => setTimeout(r, 100)); // UI flush
+
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Resolution Multiplier
+                const scale = 2; 
+
+                // Dimensions (Fixed Phone)
+                const phoneW = 375 * scale;
+                const phoneH = 812 * scale; 
+                const pad = style.padding * scale;
+                
+                const canvasW = phoneW + (pad * 2);
+                const canvasH = phoneH + (pad * 2);
+
+                canvas.width = canvasW;
+                canvas.height = canvasH;
+
+                // 1. Draw Canvas Background
+                if (style.bgType === 'solid') {
+                    ctx.fillStyle = style.bgColor1;
+                    ctx.fillRect(0, 0, canvasW, canvasH);
+                } else if (style.bgType === 'gradient') {
+                    const grd = ctx.createLinearGradient(0, 0, canvasW, canvasH);
+                    grd.addColorStop(0, style.bgColor1);
+                    grd.addColorStop(1, style.bgColor2);
+                    ctx.fillStyle = grd;
+                    ctx.fillRect(0, 0, canvasW, canvasH);
+                } else {
+                    ctx.clearRect(0, 0, canvasW, canvasH);
+                }
+
+                const phoneX = pad;
+                const phoneY = pad;
+                const radius = 40 * scale;
+
+                // 2. Phone Shadow
+                if (style.deviceShadow) {
+                    ctx.shadowColor = "rgba(0,0,0,0.3)";
+                    ctx.shadowBlur = 40 * scale;
+                    ctx.shadowOffsetY = 20 * scale;
+                }
+                
+                // 3. Phone Body
+                ctx.fillStyle = style.darkMode ? '#000000' : '#ffffff';
+                ctx.beginPath();
+                ctx.roundRect(phoneX, phoneY, phoneW, phoneH, radius);
+                ctx.fill();
+
+                // Reset Shadow
+                ctx.shadowColor = "transparent";
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetY = 0;
+
+                // 4. Phone Border
+                if (style.deviceBorder) {
+                    ctx.lineWidth = 1.5 * scale;
+                    ctx.strokeStyle = '#e4e4e7';
+                    ctx.stroke();
+                }
+
+                // 5. Clip
+                ctx.save();
+                ctx.beginPath();
+                ctx.roundRect(phoneX, phoneY, phoneW, phoneH, radius);
+                ctx.clip();
+
+                // --- Layout Logic ---
+                const safeX = phoneX + (20 * scale);
+                const safeW = phoneW - (40 * scale);
+                let currentY = phoneY + (50 * scale); 
+
+                // Fonts
+                const fontBold = (size) => `600 ${size * scale}px "Inter", sans-serif`;
+                const fontReg = (size) => `400 ${size * scale}px "Inter", sans-serif`;
+
+                // Status Bar
+                ctx.fillStyle = (mode === 'story' || style.darkMode) ? '#fff' : '#000';
+                ctx.font = fontBold(12);
+                ctx.fillText("12:00", phoneX + (30 * scale), phoneY + (30 * scale));
+                ctx.fillRect(phoneX + phoneW - (45 * scale), phoneY + (20 * scale), 20 * scale, 10 * scale);
+
+                if (mode === 'feed') {
+                    // --- SMART FEED LAYOUT ---
+                    
+                    // 1. Calculate Sizes of Rigid Elements
+                    const mainImg = content.mainImage ? await loadImage(content.mainImage.src) : null;
+                    let imgDrawH = phoneW; // Default square
+                    
+                    if (mainImg) {
+                        const aspect = mainImg.height / mainImg.width;
+                        imgDrawH = phoneW * aspect;
+                    }
+
+                    const footerH = 80 * scale; // CTA area height
+                    const headerOffset = 70 * scale; // Height taken by Avatar/Name
+                    
+                    // 2. Calculate Available Space for Text
+                    // Total Phone Height - (Top Header + Image + Footer + Bottom Padding + Safe Margin)
+                    const phoneBottom = phoneY + phoneH;
+                    const maxContentBottom = phoneBottom; // Align to very bottom
+                    
+                    // The "Must Have" bottom block height
+                    const bottomBlockHeight = imgDrawH + footerH; 
+                    
+                    // The Y position where Image MUST start to fit perfectly at bottom
+                    // If text is short, Image starts higher. If text is long, Image pushes down.
+                    // BUT Image cannot go lower than: phoneBottom - bottomBlockHeight
+                    const maxImageStartY = phoneBottom - bottomBlockHeight;
+
+                    // Header
+                    const avatarSize = 40 * scale;
+                    const avatarImg = content.avatar ? await loadImage(content.avatar.src) : null;
+                    
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(safeX + avatarSize/2, currentY + avatarSize/2, avatarSize/2, 0, Math.PI*2);
+                    ctx.closePath();
+                    ctx.clip();
+                    if (avatarImg) ctx.drawImage(avatarImg, safeX, currentY, avatarSize, avatarSize);
+                    else { ctx.fillStyle = '#ccc'; ctx.fillRect(safeX, currentY, avatarSize, avatarSize); }
+                    ctx.restore();
+
+                    ctx.fillStyle = style.darkMode ? '#fff' : '#000';
+                    ctx.font = fontBold(14);
+                    ctx.textAlign = 'left';
+                    ctx.fillText(content.name, safeX + avatarSize + (10 * scale), currentY + (15 * scale));
+                    
+                    ctx.fillStyle = '#a1a1aa';
+                    ctx.font = fontReg(11);
+                    ctx.fillText("Gesponsord • 2u", safeX + avatarSize + (10 * scale), currentY + (32 * scale));
+                    
+                    // Reset text color for body
+                    ctx.fillStyle = style.darkMode ? '#fff' : '#000';
+                    ctx.fillText("...", phoneX + phoneW - (30 * scale), currentY + (20 * scale));
+
+                    // Move Y past header
+                    currentY += headerOffset;
+
+                    // 3. Render Text with Limit
+                    ctx.fillStyle = style.darkMode ? '#fff' : '#18181b';
+                    ctx.font = fontReg(14);
+                    const lineHeight = 20 * scale;
+                    const textLines = wrapText(ctx, content.text, safeW);
+                    
+                    // Calculate max lines allowed
+                    // Available height for text = maxImageStartY - currentY - margin
+                    const maxTextH = maxImageStartY - currentY - (10 * scale);
+                    const maxLines = Math.floor(maxTextH / lineHeight);
+                    
+                    let linesDrawn = 0;
+                    for (let i = 0; i < textLines.length; i++) {
+                        if (linesDrawn >= maxLines) break;
+                        
+                        // Check if this is the last allowed line, but we have more text
+                        if (linesDrawn === maxLines - 1 && i < textLines.length - 1) {
+                            ctx.fillText(textLines[i] + "... lees meer", safeX, currentY);
+                            currentY += lineHeight;
+                            linesDrawn++;
+                            break;
+                        }
+                        
+                        ctx.fillText(textLines[i], safeX, currentY);
+                        currentY += lineHeight;
+                        linesDrawn++;
+                    }
+                    
+                    // If text was short, add "lees meer" if explicitly requested or just leave it. 
+                    // User prompt implies "lees meer" appears when text is cut off.
+                    // But user also said "Some text with 'lees meer...'" in original prompt.
+                    // We'll append it if we cut off. If not, we assume user typed it or we add it as link color?
+                    // Let's stick to strict cutoff logic for now.
+
+                    // 4. Render Image & Footer
+                    // Position: Either right below text, OR pushed to bottom limit?
+                    // User: "When I type too much text... image move down... want text to stop... so image is visible"
+                    // This implies natural flow.
+                    
+                    // Add small gap
+                    currentY += (10 * scale);
+
+                    // Ensure we don't draw outside bounds (though calculation above should prevent it)
+                    // If text was very short, currentY is high. 
+                    // If text was maxed out, currentY is near maxImageStartY.
+                    
+                    if (mainImg) {
+                        ctx.drawImage(mainImg, phoneX, currentY, phoneW, imgDrawH);
+                    } else {
+                        ctx.fillStyle = '#27272a';
+                        ctx.fillRect(phoneX, currentY, phoneW, imgDrawH);
+                    }
+
+                    // Move past image
+                    currentY += imgDrawH;
+
+                    // Footer
+                    ctx.fillStyle = style.darkMode ? '#27272a' : '#f4f4f5';
+                    ctx.fillRect(phoneX, currentY, phoneW, footerH);
+
+                    ctx.fillStyle = style.darkMode ? '#fff' : '#000';
+                    ctx.font = fontBold(13);
+                    ctx.fillText(content.headline, safeX, currentY + (30 * scale));
+                    
+                    ctx.fillStyle = '#71717a';
+                    ctx.font = fontReg(11);
+                    ctx.fillText(content.name.toLowerCase().replace(/\s/g,'') + ".nl", safeX, currentY + (50 * scale));
+
+                    // Button
+                    const btnW = 100 * scale;
+                    const btnH = 36 * scale;
+                    const btnX = phoneX + phoneW - (20 * scale) - btnW;
+                    const btnY = currentY + (22 * scale);
+                    
+                    ctx.fillStyle = style.darkMode ? '#3f3f46' : '#e4e4e7'; 
+                    ctx.beginPath();
+                    ctx.roundRect(btnX, btnY, btnW, btnH, 4 * scale);
+                    ctx.fill();
+
+                    ctx.fillStyle = style.darkMode ? '#fff' : '#000';
+                    ctx.font = fontBold(12);
+                    ctx.textAlign = 'center';
+                    ctx.fillText(content.buttonText, btnX + btnW/2, btnY + (22 * scale));
+
+                } else {
+                    // --- STORY MODE (Unchanged) ---
+                    const mainImg = content.mainImage ? await loadImage(content.mainImage.src) : null;
+                    if (mainImg) {
+                        const ratio = mainImg.width / mainImg.height;
+                        const targetRatio = phoneW / phoneH;
+                        let sw, sh, sx, sy;
+                        if (ratio > targetRatio) {
+                            sh = mainImg.height;
+                            sw = sh * targetRatio;
+                            sy = 0;
+                            sx = (mainImg.width - sw) / 2;
+                        } else {
+                            sw = mainImg.width;
+                            sh = sw / targetRatio;
+                            sx = 0;
+                            sy = (mainImg.height - sh) / 2;
+                        }
+                        ctx.drawImage(mainImg, sx, sy, sw, sh, phoneX, phoneY, phoneW, phoneH);
+                    } else {
+                        ctx.fillStyle = '#27272a';
+                        ctx.fillRect(phoneX, phoneY, phoneW, phoneH);
+                    }
+
+                    const gradient = ctx.createLinearGradient(0, phoneY + phoneH/2, 0, phoneY + phoneH);
+                    gradient.addColorStop(0, "transparent");
+                    gradient.addColorStop(1, "rgba(0,0,0,0.8)");
+                    ctx.fillStyle = gradient;
+                    ctx.fillRect(phoneX, phoneY + phoneH/2, phoneW, phoneH/2);
+
+                    const avatarSize = 32 * scale;
+                    const topY = phoneY + (50 * scale);
+                    const avatarImg = content.avatar ? await loadImage(content.avatar.src) : null;
+
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.arc(safeX + avatarSize/2, topY + avatarSize/2, avatarSize/2, 0, Math.PI*2);
+                    ctx.clip();
+                    if (avatarImg) ctx.drawImage(avatarImg, safeX, topY, avatarSize, avatarSize);
+                    else { ctx.fillStyle = '#ccc'; ctx.fillRect(safeX, topY, avatarSize, avatarSize); }
+                    ctx.restore();
+
+                    ctx.fillStyle = '#fff';
+                    ctx.font = fontBold(13);
+                    ctx.textAlign = 'left';
+                    ctx.fillText(content.name, safeX + avatarSize + (10 * scale), topY + (20 * scale));
+
+                    const iconX = phoneX + phoneW - (30 * scale);
+                    const iconYStart = phoneY + phoneH - (150 * scale);
+                    const iconGap = 50 * scale;
+
+                    ctx.fillStyle = '#fff';
+                    ctx.font = fontBold(20);
+                    ctx.textAlign = 'center';
+                    ctx.fillText("❤️", iconX, iconYStart); 
+                    ctx.font = fontReg(12);
+                    ctx.fillText("1.2k", iconX, iconYStart + (15*scale));
+                    ctx.font = fontBold(20);
+                    ctx.fillText("💬", iconX, iconYStart + iconGap);
+                    ctx.fillText("✈️", iconX, iconYStart + (iconGap*2));
+                }
+
+                ctx.restore(); // Restore clip
+
+                const notchW = 100 * scale;
+                const notchH = 25 * scale;
+                ctx.fillStyle = '#000';
+                ctx.beginPath();
+                ctx.roundRect(phoneX + (phoneW - notchW)/2, phoneY + (10 * scale), notchW, notchH, 12 * scale);
+                ctx.fill();
+
+                canvas.toBlob((blob) => {
+                    saveAs(blob, `${content.name.replace(/\s/g,'_')}_social.png`);
+                    setLoading(false);
+                }, 'image/png');
+            };
+
+            const loadImage = (src) => new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=src; });
+            const wrapText = (ctx, text, maxWidth) => {
+                const words = text.split(' ');
+                let lines = [];
+                let line = words[0];
+                for (let i = 1; i < words.length; i++) {
+                    let w = words[i];
+                    let width = ctx.measureText(line + " " + w).width;
+                    if (width < maxWidth) {
+                        line += " " + w;
+                    } else {
+                        lines.push(line);
+                        line = w;
+                    }
+                }
+                lines.push(line);
+                return lines;
+            };
+
+            return (
+                <div className="flex flex-col md:flex-row h-screen">
+                    <aside className="w-full md:w-96 bg-dark-800 border-r border-white/10 flex flex-col overflow-y-auto z-20 shadow-2xl">
+                        <div className="p-6 border-b border-white/10">
+                            <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">SocialFrame</h1>
+                            <p className="text-xs text-gray-400 mt-1">Universal Social Media Mockups</p>
+                        </div>
+
+                        <div className="p-6 space-y-8">
+                            <div className="flex bg-dark-900 p-1 rounded-lg border border-white/5">
+                                <button onClick={() => setMode('feed')} className={`flex-1 py-2 text-xs font-medium rounded-md flex items-center justify-center gap-2 transition-all ${mode === 'feed' ? 'bg-dark-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}>
+                                    <Icons.Layout /> Feed Post
+                                </button>
+                                <button onClick={() => setMode('story')} className={`flex-1 py-2 text-xs font-medium rounded-md flex items-center justify-center gap-2 transition-all ${mode === 'story' ? 'bg-dark-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}>
+                                    <Icons.Smartphone /> Story / Reel
+                                </button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Assets</h3>
+                                <div className="flex gap-4">
+                                    <div className="flex-1">
+                                        <label className="block text-xs mb-2 text-gray-400">Logo / Avatar</label>
+                                        <label className="w-full aspect-square bg-dark-900 border border-dashed border-gray-600 rounded-full flex items-center justify-center cursor-pointer hover:border-blue-500 transition-colors overflow-hidden group">
+                                            {content.avatar ? <img src={content.avatar.src} className="w-full h-full object-cover" /> : <Icons.User />}
+                                            <input type="file" accept="image/*" onChange={(e) => handleImageUpload('avatar', e)} />
+                                        </label>
+                                    </div>
+                                    <div className="flex-[3]">
+                                        <label className="block text-xs mb-2 text-gray-400">Main Photo</label>
+                                        <label className="w-full h-24 bg-dark-900 border border-dashed border-gray-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-500 transition-colors overflow-hidden relative">
+                                            {content.mainImage ? (
+                                                <img src={content.mainImage.src} className="w-full h-full object-cover opacity-50" />
+                                            ) : (
+                                                <div className="flex flex-col items-center text-gray-500"><Icons.Image /><span className="text-[10px] mt-1">Click to Upload</span></div>
+                                            )}
+                                            <input type="file" accept="image/*" onChange={(e) => handleImageUpload('mainImage', e)} />
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Content</h3>
+                                <div>
+                                    <label className="block text-xs text-gray-400 mb-1">Sender Name</label>
+                                    <input type="text" value={content.name} onChange={e => updateContent('name', e.target.value)} className="w-full bg-dark-900 border border-gray-700 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none" />
+                                </div>
+                                {mode === 'feed' && (
+                                    <>
+                                        <div>
+                                            <label className="block text-xs text-gray-400 mb-1">Post Text</label>
+                                            <textarea rows="3" value={content.text} onChange={e => updateContent('text', e.target.value)} className="w-full bg-dark-900 border border-gray-700 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none resize-none"></textarea>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <label className="block text-xs text-gray-400 mb-1">Headline</label>
+                                                <input type="text" value={content.headline} onChange={e => updateContent('headline', e.target.value)} className="w-full bg-dark-900 border border-gray-700 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs text-gray-400 mb-1">Button Label</label>
+                                                <input type="text" value={content.buttonText} onChange={e => updateContent('buttonText', e.target.value)} className="w-full bg-dark-900 border border-gray-700 rounded px-3 py-2 text-sm focus:border-blue-500 outline-none" />
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Style</h3>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm text-gray-300">Dark Mode UI</span>
+                                    <button onClick={() => updateStyle('darkMode', !style.darkMode)} className={`w-10 h-5 rounded-full relative transition-colors ${style.darkMode ? 'bg-blue-600' : 'bg-gray-700'}`}>
+                                        <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-all ${style.darkMode ? 'left-6' : 'left-1'}`}></div>
+                                    </button>
+                                </div>
+                                <div className="space-y-2 pt-2 border-t border-white/5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-gray-400">Device Shadow</span>
+                                        <button onClick={() => updateStyle('deviceShadow', !style.deviceShadow)} className={`w-10 h-5 rounded-full relative transition-colors ${style.deviceShadow ? 'bg-blue-600' : 'bg-gray-700'}`}>
+                                            <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-all ${style.deviceShadow ? 'left-6' : 'left-1'}`}></div>
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-gray-400">Device Border</span>
+                                        <button onClick={() => updateStyle('deviceBorder', !style.deviceBorder)} className={`w-10 h-5 rounded-full relative transition-colors ${style.deviceBorder ? 'bg-blue-600' : 'bg-gray-700'}`}>
+                                            <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-all ${style.deviceBorder ? 'left-6' : 'left-1'}`}></div>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs text-gray-400 mb-2">Background</label>
+                                    <div className="flex gap-2">
+                                        <div className="h-8 w-8 rounded-full overflow-hidden border border-gray-600 relative bg-zinc-200 cursor-pointer">
+                                            <input type="color" value={style.bgColor1} onChange={e => updateStyle('bgColor1', e.target.value)} className="opacity-0 w-full h-full scale-150 cursor-pointer" />
+                                        </div>
+                                        {style.bgType === 'gradient' && (
+                                            <div className="h-8 w-8 rounded-full overflow-hidden border border-gray-600 relative bg-zinc-300 cursor-pointer">
+                                                <input type="color" value={style.bgColor2} onChange={e => updateStyle('bgColor2', e.target.value)} className="opacity-0 w-full h-full scale-150 cursor-pointer" />
+                                            </div>
+                                        )}
+                                        <select value={style.bgType} onChange={e => updateStyle('bgType', e.target.value)} className="ml-auto bg-dark-900 border border-gray-700 rounded px-2 text-xs">
+                                            <option value="solid">Solid</option>
+                                            <option value="gradient">Gradient</option>
+                                            <option value="transparent">Transparent</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={generateCanvas} disabled={loading} className="w-full bg-white text-black font-bold py-3 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
+                                {loading ? 'Generating...' : <><Icons.Download /> Download PNG</>}
+                            </button>
+                        </div>
+                    </aside>
+
+                    {/* Preview Area */}
+                    <main className="flex-1 bg-black relative flex items-center justify-center p-8 checkerboard overflow-hidden">
+                        <div className="relative transition-all duration-300 shadow-2xl"
+                            style={{
+                                padding: style.bgType === 'transparent' ? 0 : `${style.padding}px`,
+                                background: style.bgType === 'transparent' ? 'transparent' : (style.bgType === 'solid' ? style.bgColor1 : `linear-gradient(135deg, ${style.bgColor1}, ${style.bgColor2})`)
+                            }}
+                        >
+                            <div className={`relative overflow-hidden transition-all duration-300 ${style.darkMode ? 'bg-black' : 'bg-white'} rounded-[40px]`}
+                                style={{
+                                    width: '320px',
+                                    height: '650px',
+                                    boxShadow: style.deviceShadow ? '0 20px 40px rgba(0,0,0,0.3)' : 'none',
+                                    border: style.deviceBorder ? '1.5px solid #e4e4e7' : 'none'
+                                }}
+                            >
+                                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-full z-20"></div>
+
+                                {mode === 'feed' && (
+                                    <div className="pt-12 flex flex-col h-full relative">
+                                        <div className="px-4 flex items-center gap-3 mb-3 flex-shrink-0">
+                                            <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+                                                {content.avatar && <img src={content.avatar.src} className="w-full h-full object-cover" />}
+                                            </div>
+                                            <div className="flex-1">
+                                                <h3 className={`text-sm font-semibold ${style.darkMode ? 'text-white' : 'text-black'}`}>{content.name}</h3>
+                                                <p className="text-[10px] text-gray-400">Gesponsord • 2u</p>
+                                            </div>
+                                            <div className={style.darkMode ? 'text-white' : 'text-black'}>...</div>
+                                        </div>
+
+                                        {/* Smart Text Container */}
+                                        <div 
+                                            className={`px-4 mb-3 text-sm ${style.darkMode ? 'text-gray-200' : 'text-gray-800'} overflow-hidden`}
+                                            style={{ maxHeight: layoutMetrics.maxTextHeight ? `${layoutMetrics.maxTextHeight}px` : 'auto' }}
+                                        >
+                                            <p className="whitespace-pre-wrap leading-snug">
+                                                {content.text}
+                                            </p>
+                                        </div>
+
+                                        {/* Image and Footer Block - NOW JUST FLOWS NATURALLY */}
+                                        <div className=""> 
+                                            <div className="w-full bg-gray-100 relative" style={{ height: layoutMetrics.imgHeight ? `${layoutMetrics.imgHeight}px` : '320px' }}>
+                                                {content.mainImage ? (
+                                                    <img src={content.mainImage.src} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-gray-800">No Image</div>
+                                                )}
+                                            </div>
+                                            <div className={`px-4 h-[70px] ${style.darkMode ? 'bg-dark-700' : 'bg-gray-100'} flex items-center justify-between`}>
+                                                <div className="flex-1 pr-2">
+                                                    <p className={`text-xs font-bold ${style.darkMode ? 'text-white' : 'text-black'}`}>{content.headline}</p>
+                                                    <p className="text-[10px] text-gray-500">{content.name.toLowerCase().replace(/\s/g,'')}.nl</p>
+                                                </div>
+                                                <div className={`px-3 py-1.5 rounded text-[10px] font-bold ${style.darkMode ? 'bg-dark-800 text-white border border-gray-600' : 'bg-white text-black border border-gray-200'}`}>
+                                                    {content.buttonText}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {mode === 'story' && (
+                                    <div className="h-full relative w-full flex flex-col">
+                                        <div className="absolute inset-0 bg-gray-800">
+                                            {content.mainImage && <img src={content.mainImage.src} className="w-full h-full object-cover" />}
+                                            <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent"></div>
+                                        </div>
+                                        <div className="relative z-10 pt-12 px-4 flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-full border border-white/20 bg-gray-200 overflow-hidden">
+                                                {content.avatar && <img src={content.avatar.src} className="w-full h-full object-cover" />}
+                                            </div>
+                                            <span className="text-white text-sm font-semibold shadow-black drop-shadow-md">{content.name}</span>
+                                        </div>
+                                        <div className="mt-auto relative z-10 p-4 pb-12 flex flex-col items-end gap-6 text-white">
+                                            <div className="flex flex-col items-center gap-1"><Icons.Heart /><span className="text-[10px]">1.2k</span></div>
+                                            <div className="flex flex-col items-center gap-1"><div className="transform scale-90"><Icons.Layout /></div></div>
+                                            <div className="flex flex-col items-center gap-1"><Icons.Share /></div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </main>
+                </div>
+            );
+        }
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
