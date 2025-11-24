@@ -28,14 +28,36 @@
         ::-webkit-scrollbar-track { background: #18181b; }
         ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
 
+        /* Custom Range Slider Track and Thumb */
+        input[type="range"]::-webkit-slider-runnable-track {
+            background: #27272a;
+            height: 4px;
+            border-radius: 2px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            margin-top: -6px; /* Adjusting vertical position of the thumb */
+            height: 16px;
+            width: 16px;
+            background: #3b82f6; /* Tailwind blue-500 */
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+            transition: background 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+        }
+        input[type="range"]:focus::-webkit-slider-thumb {
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.5);
+        }
+
         /* Transparency Grid */
         .checkerboard {
-            background-color: #18181b;
+            background-color: #09090b;
             background-image: 
-                linear-gradient(45deg, #27272a 25%, transparent 25%), 
-                linear-gradient(-45deg, #27272a 25%, transparent 25%), 
-                linear-gradient(45deg, transparent 75%, #27272a 75%), 
-                linear-gradient(-45deg, transparent 75%, #27272a 75%);
+                linear-gradient(45deg, #18181b 25%, transparent 25%), 
+                linear-gradient(-45deg, #18181b 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, #18181b 75%), 
+                linear-gradient(-45deg, transparent 75%, #18181b 75%);
             background-size: 20px 20px;
         }
         
@@ -120,7 +142,7 @@
             }
         };
 
-        // --- Icons ---
+        // --- Icons (Lucide Icons) ---
         const Icons = {
             Upload: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>,
             Download: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
@@ -164,14 +186,20 @@
                 darkMode: false, 
                 deviceShadow: true,
                 deviceBorder: false,
-                avatarShape: 'circle'
+                avatarShape: 'circle',
+                phoneWidth: 320, // New: Default width
+                phoneHeight: 650 // New: Default height
             });
 
             // --- Load from IndexedDB on mount ---
             useEffect(() => {
                 const load = async () => {
-                    const templates = await dbHelper.getAll();
-                    setSavedDesigns(templates);
+                    try {
+                        const templates = await dbHelper.getAll();
+                        setSavedDesigns(templates);
+                    } catch (e) {
+                        console.error("Failed to load designs from DB:", e);
+                    }
                 };
                 load();
             }, []);
@@ -213,8 +241,7 @@
                     setSavedDesigns(updated);
                     setSidebarTab('library'); // Switch to library
                 } catch (e) {
-                    alert("Could not save design. Storage might be unavailable.");
-                    console.error(e);
+                    console.error("Could not save design. Storage might be unavailable.", e);
                 }
             };
 
@@ -241,38 +268,44 @@
             const layoutMetrics = useMemo(() => {
                 if (mode !== 'feed') return {};
                 
-                const phoneW = 320;
-                const phoneH = 650;
-                const headerH = 80; 
-                const footerH = 70; 
+                // Use dynamic state values
+                const phoneW = style.phoneWidth;
+                const phoneH = style.phoneHeight;
+                const headerH = 80; // Avatar + Name
+                const footerH = 70; // Headline + Button
                 const safetyPad = 20;
 
-                let imgH = phoneW; 
+                let imgH = phoneW; // Default square image if no image uploaded
                 if (content.mainImage) {
                     const aspect = content.mainImage.height / content.mainImage.width;
-                    imgH = phoneW * aspect;
+                    // The image height scales proportionally to the phone's width
+                    imgH = phoneW * aspect; 
                 }
 
+                // Available space for text = total height - header - footer - image - safety margin
                 const availableSpace = phoneH - headerH - footerH - imgH - safetyPad;
 
                 return {
                     imgHeight: imgH,
+                    // Ensure minimum text height for readability
                     maxTextHeight: Math.max(20, availableSpace) 
                 };
-            }, [mode, content.mainImage]);
+            }, [mode, content.mainImage, style.phoneWidth, style.phoneHeight]);
 
             // --- Canvas Generation ---
             const generateCanvas = async () => {
                 setLoading(true);
+                // Brief timeout to ensure UI updates before canvas rendering
                 await new Promise(r => setTimeout(r, 100)); 
 
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                const scale = 2; 
+                const scale = 2; // High resolution scaling
 
-                const phoneW = 375 * scale;
-                const phoneH = 812 * scale; 
+                // Use dynamic state values and scale them
+                const phoneW = style.phoneWidth * scale;
+                const phoneH = style.phoneHeight * scale; 
                 const pad = style.padding * scale;
                 
                 const canvasW = phoneW + (pad * 2);
@@ -292,6 +325,7 @@
                     ctx.fillStyle = grd;
                     ctx.fillRect(0, 0, canvasW, canvasH);
                 } else {
+                    // Transparent background uses clearRect
                     ctx.clearRect(0, 0, canvasW, canvasH);
                 }
 
@@ -309,7 +343,13 @@
                 // 3. Phone Body
                 ctx.fillStyle = style.darkMode ? '#000000' : '#ffffff';
                 ctx.beginPath();
-                ctx.roundRect(phoneX, phoneY, phoneW, phoneH, radius);
+                // Custom roundRect polyfill for canvas (not natively supported everywhere)
+                if (ctx.roundRect) { 
+                    ctx.roundRect(phoneX, phoneY, phoneW, phoneH, radius);
+                } else {
+                    // Fallback for older browsers: simple rect
+                    ctx.rect(phoneX, phoneY, phoneW, phoneH);
+                }
                 ctx.fill();
 
                 // Reset Shadow
@@ -324,10 +364,14 @@
                     ctx.stroke();
                 }
 
-                // 5. Clip
+                // 5. Clip Content to Phone Body
                 ctx.save();
                 ctx.beginPath();
-                ctx.roundRect(phoneX, phoneY, phoneW, phoneH, radius);
+                if (ctx.roundRect) {
+                    ctx.roundRect(phoneX, phoneY, phoneW, phoneH, radius);
+                } else {
+                    ctx.rect(phoneX, phoneY, phoneW, phoneH);
+                }
                 ctx.clip();
 
                 // --- Layout Logic ---
@@ -349,7 +393,7 @@
                     
                     if (mainImg) {
                         const aspect = mainImg.height / mainImg.width;
-                        imgDrawH = phoneW * aspect;
+                        imgDrawH = phoneW * aspect; // Image height proportional to phone width
                     }
 
                     const footerH = 80 * scale; 
@@ -360,13 +404,15 @@
                     const avatarSize = 40 * scale;
                     const avatarImg = content.avatar ? await loadImage(content.avatar.src) : null;
                     
+                    // Avatar drawing
                     ctx.save();
                     ctx.beginPath();
                     if (style.avatarShape === 'circle') {
                         ctx.arc(safeX + avatarSize/2, currentY + avatarSize/2, avatarSize/2, 0, Math.PI*2);
                     } else {
                         const r = 8 * scale;
-                        ctx.roundRect(safeX, currentY, avatarSize, avatarSize, r);
+                        if (ctx.roundRect) ctx.roundRect(safeX, currentY, avatarSize, avatarSize, r);
+                        else ctx.rect(safeX, currentY, avatarSize, avatarSize);
                     }
                     ctx.closePath();
                     ctx.clip();
@@ -374,6 +420,7 @@
                     else { ctx.fillStyle = '#ccc'; ctx.fillRect(safeX, currentY, avatarSize, avatarSize); }
                     ctx.restore();
 
+                    // Name and Metadata
                     ctx.fillStyle = style.darkMode ? '#fff' : '#000';
                     ctx.font = fontBold(14);
                     ctx.textAlign = 'left';
@@ -388,6 +435,7 @@
 
                     currentY += headerOffset;
 
+                    // Post Text (Word Wrap and Truncation)
                     ctx.fillStyle = style.darkMode ? '#fff' : '#18181b';
                     ctx.font = fontReg(14);
                     const lineHeight = 20 * scale;
@@ -412,6 +460,7 @@
                     
                     currentY += (10 * scale);
                     
+                    // Main Image
                     if (mainImg) {
                         ctx.drawImage(mainImg, phoneX, currentY, phoneW, imgDrawH);
                     } else {
@@ -420,18 +469,20 @@
                     }
                     currentY += imgDrawH;
 
+                    // Footer Block
                     ctx.fillStyle = style.darkMode ? '#27272a' : '#f4f4f5';
                     ctx.fillRect(phoneX, currentY, phoneW, footerH);
 
+                    // Footer Content (Headline & URL)
                     ctx.fillStyle = style.darkMode ? '#fff' : '#000';
                     ctx.font = fontBold(13);
                     ctx.fillText(content.headline, safeX, currentY + (30 * scale));
                     
                     ctx.fillStyle = '#71717a';
                     ctx.font = fontReg(11);
-                    // Use custom URL field
                     ctx.fillText(content.url || content.name.toLowerCase().replace(/\s/g,'') + ".nl", safeX, currentY + (50 * scale));
 
+                    // Button
                     const btnW = 100 * scale;
                     const btnH = 36 * scale;
                     const btnX = phoneX + phoneW - (20 * scale) - btnW;
@@ -439,7 +490,8 @@
                     
                     ctx.fillStyle = style.darkMode ? '#3f3f46' : '#e4e4e7'; 
                     ctx.beginPath();
-                    ctx.roundRect(btnX, btnY, btnW, btnH, 4 * scale);
+                    if (ctx.roundRect) ctx.roundRect(btnX, btnY, btnW, btnH, 4 * scale);
+                    else ctx.rect(btnX, btnY, btnW, btnH);
                     ctx.fill();
 
                     ctx.fillStyle = style.darkMode ? '#fff' : '#000';
@@ -447,9 +499,10 @@
                     ctx.textAlign = 'center';
                     ctx.fillText(content.buttonText, btnX + btnW/2, btnY + (22 * scale));
 
-                } else {
+                } else { // Story Mode
                     const mainImg = content.mainImage ? await loadImage(content.mainImage.src) : null;
                     if (mainImg) {
+                        // Logic to cover the entire phone area without distortion (similar to object-fit: cover)
                         const ratio = mainImg.width / mainImg.height;
                         const targetRatio = phoneW / phoneH;
                         let sw, sh, sx, sy;
@@ -470,6 +523,7 @@
                         ctx.fillRect(phoneX, phoneY, phoneW, phoneH);
                     }
 
+                    // Bottom Gradient Overlay
                     const gradient = ctx.createLinearGradient(0, phoneY + phoneH/2, 0, phoneY + phoneH);
                     gradient.addColorStop(0, "transparent");
                     gradient.addColorStop(1, "rgba(0,0,0,0.8)");
@@ -480,24 +534,28 @@
                     const topY = phoneY + (50 * scale);
                     const avatarImg = content.avatar ? await loadImage(content.avatar.src) : null;
 
+                    // Story Avatar
                     ctx.save();
                     ctx.beginPath();
                     if (style.avatarShape === 'circle') {
                         ctx.arc(safeX + avatarSize/2, topY + avatarSize/2, avatarSize/2, 0, Math.PI*2);
                     } else {
                         const r = 8 * scale;
-                        ctx.roundRect(safeX, topY, avatarSize, avatarSize, r);
+                        if (ctx.roundRect) ctx.roundRect(safeX, topY, avatarSize, avatarSize, r);
+                        else ctx.rect(safeX, topY, avatarSize, avatarSize);
                     }
                     ctx.clip();
                     if (avatarImg) ctx.drawImage(avatarImg, safeX, topY, avatarSize, avatarSize);
                     else { ctx.fillStyle = '#ccc'; ctx.fillRect(safeX, topY, avatarSize, avatarSize); }
                     ctx.restore();
 
+                    // Story Name
                     ctx.fillStyle = '#fff';
                     ctx.font = fontBold(13);
                     ctx.textAlign = 'left';
                     ctx.fillText(content.name, safeX + avatarSize + (10 * scale), topY + (20 * scale));
 
+                    // Story Icons
                     const iconX = phoneX + phoneW - (30 * scale);
                     const iconYStart = phoneY + phoneH - (150 * scale);
                     const iconGap = 50 * scale;
@@ -513,21 +571,27 @@
                     ctx.fillText("✈️", iconX, iconYStart + (iconGap*2));
                 }
 
-                ctx.restore(); 
+                ctx.restore(); // Restore clip from phone body
+                
+                // Notch
                 const notchW = 100 * scale;
                 const notchH = 25 * scale;
                 ctx.fillStyle = '#000';
                 ctx.beginPath();
-                ctx.roundRect(phoneX + (phoneW - notchW)/2, phoneY + (10 * scale), notchW, notchH, 12 * scale);
+                if (ctx.roundRect) ctx.roundRect(phoneX + (phoneW - notchW)/2, phoneY + (10 * scale), notchW, notchH, 12 * scale);
+                else ctx.rect(phoneX + (phoneW - notchW)/2, phoneY + (10 * scale), notchW, notchH);
                 ctx.fill();
 
+                // Save to PNG
                 canvas.toBlob((blob) => {
+                    // Use FileSaver.js to prompt download
                     saveAs(blob, `${content.name.replace(/\s/g,'_')}_social.png`);
                     setLoading(false);
                 }, 'image/png');
             };
 
             const loadImage = (src) => new Promise(r => { const i=new Image(); i.onload=()=>r(i); i.src=src; });
+            // Utility function to wrap text onto multiple lines
             const wrapText = (ctx, text, maxWidth) => {
                 const words = text.split(' ');
                 let lines = [];
@@ -555,7 +619,7 @@
                         </div>
                         
                         {/* Tab Switcher */}
-                        <div className="flex border-b border-white/10">
+                        <div className="flex border-b border-white/10 flex-shrink-0">
                             <button 
                                 onClick={() => setSidebarTab('edit')} 
                                 className={`flex-1 py-3 text-sm font-medium transition-colors ${sidebarTab === 'edit' ? 'text-white border-b-2 border-blue-500' : 'text-gray-500 hover:text-gray-300'}`}
@@ -571,7 +635,7 @@
                         </div>
 
                         {sidebarTab === 'edit' ? (
-                            <div className="p-6 space-y-8 animate-fade-in">
+                            <div className="p-6 space-y-8 animate-fade-in flex-grow overflow-y-auto">
                                 <div className="flex bg-dark-900 p-1 rounded-lg border border-white/5">
                                     <button onClick={() => setMode('feed')} className={`flex-1 py-2 text-xs font-medium rounded-md flex items-center justify-center gap-2 transition-all ${mode === 'feed' ? 'bg-dark-700 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}>
                                         <Icons.Layout /> Feed
@@ -639,7 +703,36 @@
                                 </div>
 
                                 <div className="space-y-4">
-                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Style</h3>
+                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Style & Dimensions</h3>
+                                    
+                                    {/* New Sliders */}
+                                    <div>
+                                        <label htmlFor="phoneWidth" className="block text-xs text-gray-400 mb-2">Phone Width ({style.phoneWidth}px)</label>
+                                        <input
+                                            id="phoneWidth"
+                                            type="range"
+                                            min="280"
+                                            max="450"
+                                            step="5"
+                                            value={style.phoneWidth}
+                                            onChange={e => updateStyle('phoneWidth', parseInt(e.target.value))}
+                                            className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="phoneHeight" className="block text-xs text-gray-400 mb-2">Phone Height ({style.phoneHeight}px)</label>
+                                        <input
+                                            id="phoneHeight"
+                                            type="range"
+                                            min="500"
+                                            max="900"
+                                            step="5"
+                                            value={style.phoneHeight}
+                                            onChange={e => updateStyle('phoneHeight', parseInt(e.target.value))}
+                                            className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                                        />
+                                    </div>
+
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm text-gray-300">Dark Mode UI</span>
                                         <button onClick={() => updateStyle('darkMode', !style.darkMode)} className={`w-10 h-5 rounded-full relative transition-colors ${style.darkMode ? 'bg-blue-600' : 'bg-gray-700'}`}>
@@ -680,20 +773,20 @@
                                     </div>
                                 </div>
                                 
-                                <div className="flex gap-2 pt-4">
+                                <div className="flex gap-2 pt-4 flex-shrink-0">
                                     <button onClick={saveDesign} className="flex-1 bg-gray-700 text-white font-bold py-3 rounded-lg hover:bg-gray-600 transition-colors flex items-center justify-center gap-2">
                                         <Icons.Save /> Save as Template
                                     </button>
                                     <button onClick={generateCanvas} disabled={loading} className="flex-1 bg-white text-black font-bold py-3 rounded-lg hover:bg-gray-200 transition-colors flex items-center justify-center gap-2">
-                                        {loading ? '...' : <><Icons.Download /> PNG</>}
+                                        {loading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-black"></div> : <><Icons.Download /> PNG</>}
                                     </button>
                                 </div>
                             </div>
                         ) : (
-                            <div className="p-4 space-y-4 animate-fade-in">
+                            <div className="p-4 space-y-4 animate-fade-in flex-grow overflow-y-auto">
                                 {savedDesigns.length === 0 ? (
                                     <div className="text-center text-gray-500 py-10">
-                                        <p className="mt-2 text-sm">No saved designs yet.</p>
+                                        <p className="mt-2 text-sm">No saved designs yet. Your templates are stored securely in your browser.</p>
                                     </div>
                                 ) : (
                                     savedDesigns.map(design => (
@@ -709,7 +802,7 @@
                                             <div className="flex-1 overflow-hidden">
                                                 <div className="flex justify-between items-start mb-0.5">
                                                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{design.mode}</span>
-                                                    <button onClick={(e) => deleteDesign(design.id, e)} className="text-gray-500 hover:text-red-400 p-0.5"><Icons.Trash /></button>
+                                                    <button onClick={(e) => deleteDesign(design.id, e)} className="text-gray-500 hover:text-red-400 p-0.5 transition-colors"><Icons.Trash /></button>
                                                 </div>
                                                 <p className="text-sm font-medium text-white truncate">{design.content.name}</p>
                                                 <p className="text-[10px] text-gray-500">{design.date}</p>
@@ -722,7 +815,7 @@
                     </aside>
 
                     {/* Preview Area */}
-                    <main className="flex-1 bg-black relative flex items-center justify-center p-8 checkerboard overflow-hidden">
+                    <main className="flex-1 bg-black relative flex items-center justify-center p-8 checkerboard overflow-auto">
                         <div className="relative transition-all duration-300 shadow-2xl"
                             style={{
                                 padding: style.bgType === 'transparent' ? 0 : `${style.padding}px`,
@@ -731,16 +824,18 @@
                         >
                             <div className={`relative overflow-hidden transition-all duration-300 ${style.darkMode ? 'bg-black' : 'bg-white'} rounded-[40px]`}
                                 style={{
-                                    width: '320px',
-                                    height: '650px',
+                                    width: `${style.phoneWidth}px`, // Dynamic Width
+                                    height: `${style.phoneHeight}px`, // Dynamic Height
                                     boxShadow: style.deviceShadow ? '0 20px 40px rgba(0,0,0,0.3)' : 'none',
                                     border: style.deviceBorder ? '1.5px solid #e4e4e7' : 'none'
                                 }}
                             >
+                                {/* Phone Notch */}
                                 <div className="absolute top-2 left-1/2 -translate-x-1/2 w-24 h-6 bg-black rounded-full z-20"></div>
 
                                 {mode === 'feed' && (
                                     <div className="pt-12 flex flex-col h-full relative">
+                                        {/* Header */}
                                         <div className="px-4 flex items-center gap-3 mb-3 flex-shrink-0">
                                             <div className={`w-10 h-10 bg-gray-200 overflow-hidden flex-shrink-0 ${style.avatarShape === 'circle' ? 'rounded-full' : 'rounded-xl'}`}>
                                                 {content.avatar && <img src={content.avatar.src} className="w-full h-full object-cover" />}
@@ -752,6 +847,7 @@
                                             <div className={style.darkMode ? 'text-white' : 'text-black'}>...</div>
                                         </div>
 
+                                        {/* Post Text */}
                                         <div 
                                             className={`px-4 mb-3 text-sm ${style.darkMode ? 'text-gray-200' : 'text-gray-800'} overflow-hidden`}
                                             style={{ maxHeight: layoutMetrics.maxTextHeight ? `${layoutMetrics.maxTextHeight}px` : 'auto' }}
@@ -761,15 +857,17 @@
                                             </p>
                                         </div>
 
-                                        <div className=""> 
-                                            <div className="w-full bg-gray-100 relative" style={{ height: layoutMetrics.imgHeight ? `${layoutMetrics.imgHeight}px` : '320px' }}>
+                                        <div className="flex flex-col flex-grow"> 
+                                            {/* Main Image */}
+                                            <div className="w-full bg-gray-100 relative flex-shrink-0" style={{ height: layoutMetrics.imgHeight ? `${layoutMetrics.imgHeight}px` : `${style.phoneWidth}px` }}>
                                                 {content.mainImage ? (
                                                     <img src={content.mainImage.src} className="w-full h-full object-cover" />
                                                 ) : (
                                                     <div className="absolute inset-0 flex items-center justify-center text-gray-400 bg-gray-800">No Image</div>
                                                 )}
                                             </div>
-                                            <div className={`px-4 h-[70px] ${style.darkMode ? 'bg-dark-700' : 'bg-gray-100'} flex items-center justify-between`}>
+                                            {/* Footer Ad Block */}
+                                            <div className={`px-4 h-[70px] flex-shrink-0 ${style.darkMode ? 'bg-dark-700' : 'bg-gray-100'} flex items-center justify-between`}>
                                                 <div className="flex-1 pr-2">
                                                     <p className={`text-xs font-bold ${style.darkMode ? 'text-white' : 'text-black'}`}>{content.headline}</p>
                                                     <p className="text-[10px] text-gray-500">
